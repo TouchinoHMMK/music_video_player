@@ -124,14 +124,14 @@ entries = [e for e in entries if e]
 
 
 def find_file(entry):
-    """ダウンロードされた実ファイルのパスを特定する。"""
+    """ダウンロードされた実ファイルのパスを特定する(リポジトリからの相対パスで返す)。"""
     for rd in entry.get("requested_downloads") or []:
         fp = rd.get("filepath")
         if fp and os.path.exists(fp):
-            return fp.replace("\\", "/")
+            return os.path.relpath(fp).replace("\\", "/")
     vid = entry.get("id", "")
     cands = [p for p in glob.glob(f"media/*{vid}*.{ext}") if os.path.exists(p)]
-    return cands[0].replace("\\", "/") if cands else None
+    return os.path.relpath(cands[0]).replace("\\", "/") if cands else None
 
 
 added = 0
