@@ -9,9 +9,23 @@ import datetime
 import glob
 import json
 import os
+import shutil
+import subprocess
 import sys
 
 import yt_dlp
+
+# yt-dlpのYouTube抽出に必要なJS実行環境(deno)が無ければインストールする
+if not shutil.which("deno"):
+    print("deno が見つからないためインストールします...")
+    subprocess.run(
+        "curl -fsSL https://deno.land/install.sh | sh -s -- --yes",
+        shell=True,
+        check=False,
+        env={**os.environ, "DENO_INSTALL": "/tmp/deno"},
+    )
+    os.environ["PATH"] = "/tmp/deno/bin:" + os.environ["PATH"]
+    print(f"deno: {shutil.which('deno')}")
 
 url = os.environ["MEDIA_URL"].strip()
 fmt = os.environ.get("MEDIA_FORMAT", "mp3")
