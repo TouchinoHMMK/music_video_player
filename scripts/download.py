@@ -13,9 +13,8 @@ import shutil
 import subprocess
 import sys
 
-import yt_dlp
-
-# yt-dlpのYouTube抽出に必要なJS実行環境(deno)が無ければインストールする
+# --- YouTube抽出に必要なコンポーネントを準備(yt_dlpのimportより前に行う) ---
+# 1) JS実行環境(deno)
 if not shutil.which("deno"):
     print("deno が見つからないためインストールします...")
     subprocess.run(
@@ -26,6 +25,14 @@ if not shutil.which("deno"):
     )
     os.environ["PATH"] = "/tmp/deno/bin:" + os.environ["PATH"]
     print(f"deno: {shutil.which('deno')}")
+
+# 2) JSチャレンジ解決スクリプト(EJS)を含む一式
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "-U", "yt-dlp[default]", "yt-dlp-ejs"],
+    check=False,
+)
+
+import yt_dlp  # noqa: E402  (上記インストール後にimportする必要がある)
 
 url = os.environ["MEDIA_URL"].strip()
 fmt = os.environ.get("MEDIA_FORMAT", "mp3")
