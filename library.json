@@ -5,7 +5,9 @@
       "title": "テストトーン A (440Hz)",
       "type": "audio",
       "file": "media/test-tone-a.wav",
-      "tags": ["テスト"],
+      "tags": [
+        "テスト2"
+      ],
       "source": "local",
       "addedAt": "2026-07-15T10:00:00Z"
     },
@@ -14,7 +16,10 @@
       "title": "テストトーン B (660Hz)",
       "type": "audio",
       "file": "media/test-tone-b.wav",
-      "tags": ["テスト", "お気に入り"],
+      "tags": [
+        "テスト",
+        "お気に入り"
+      ],
       "source": "local",
       "addedAt": "2026-07-15T10:01:00Z"
     }
@@ -23,7 +28,10 @@
     {
       "id": "pl-test",
       "name": "テストプレイリスト",
-      "trackIds": ["test-a", "test-b"]
+      "trackIds": [
+        "test-a",
+        "test-b"
+      ]
     }
   ]
 }
