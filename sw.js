@@ -1,4 +1,4 @@
-const CACHE = 'mediabox-v1';
+const CACHE = 'mediabox-v2';
 const ASSETS = [
   './',
   './index.html',
