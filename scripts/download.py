@@ -88,8 +88,15 @@ if fmt == "mp3":
         {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
     ]
 else:
-    # 100MB制限に収まりやすいよう720pまでに制限
-    ydl_opts["format"] = "bv*[ext=mp4][height<=720]+ba[ext=m4a]/b[ext=mp4]/best"
+    # 100MB制限に収まりやすいよう720pまでに制限。
+    # 互換性の高いH.264(avc1)+AACを優先し、無ければ他コーデックでも取得してmp4に格納する
+    ydl_opts["format"] = (
+        "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]"
+        "/bv*[ext=mp4][height<=720]+ba[ext=m4a]"
+        "/b[ext=mp4]"
+        "/bv*[height<=720]+ba"
+        "/bv*+ba/b"
+    )
     ydl_opts["merge_output_format"] = "mp4"
 
 print(f"URL: {url}")
