@@ -1,0 +1,81 @@
+name: Download media
+run-name: "DL: ${{ inputs.url }} (${{ inputs.format }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "動画/音楽のURL (YouTube, ニコニコ動画など)"
+        required: true
+        type: string
+      format:
+        description: "保存形式"
+        required: true
+        type: choice
+        options: [mp3, mp4]
+        default: mp3
+      tags:
+        description: "タグ (カンマ区切り、任意)"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: media-download
+  cancel-in-progress: false
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ffmpeg & yt-dlp
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg
+          pip install -U yt-dlp
+
+      - name: Write cookies (optional)
+        env:
+          COOKIES: ${{ secrets.YTDLP_COOKIES }}
+        run: |
+          if [ -n "$COOKIES" ]; then
+            printf '%s' "$COOKIES" > cookies.txt
+            echo "cookies.txt written"
+          fi
+
+      - name: Download and update library
+        env:
+          MEDIA_URL: ${{ inputs.url }}
+          MEDIA_FORMAT: ${{ inputs.format }}
+          MEDIA_TAGS: ${{ inputs.tags }}
+          NICO_EMAIL: ${{ secrets.NICO_EMAIL }}
+          NICO_PASSWORD: ${{ secrets.NICO_PASSWORD }}
+        run: python scripts/download.py
+
+      - name: Commit and push
+        run: |
+          rm -f cookies.txt
+          git config user.name "mediabox-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add media library.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add media via Actions: ${{ inputs.url }}"
+          for i in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            git pull --rebase
+            sleep 3
+          done
+          git push
