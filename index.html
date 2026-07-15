@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f0f17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MediaBox">
+  <title>MediaBox - 音楽・動画プレイヤー</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+</head>
+<body>
+  <header id="topbar">
+    <h1>🎵 MediaBox</h1>
+    <button id="btn-sync" class="icon-btn" title="同期">⟳ 同期</button>
+  </header>
+
+  <main id="main">
+    <!-- ライブラリ -->
+    <section id="view-library" class="view active">
+      <div class="searchrow">
+        <input type="search" id="search" placeholder="タイトルを検索...">
+      </div>
+      <div id="tag-chips" class="chips"></div>
+      <div id="track-list" class="list"></div>
+    </section>
+
+    <!-- プレイリスト -->
+    <section id="view-playlists" class="view">
+      <div id="playlist-home">
+        <button id="btn-new-playlist" class="primary wide">＋ 新規プレイリスト</button>
+        <div id="playlist-list" class="list"></div>
+      </div>
+      <div id="playlist-detail" style="display:none">
+        <div class="pl-head">
+          <button id="btn-pl-back" class="icon-btn">← 戻る</button>
+          <h2 id="pl-title"></h2>
+        </div>
+        <div class="pl-actions">
+          <button id="btn-pl-play" class="primary">▶ 再生</button>
+          <button id="btn-pl-shuffle">🔀 シャッフル再生</button>
+          <button id="btn-pl-rename" class="icon-btn">✏️</button>
+          <button id="btn-pl-delete" class="icon-btn danger">🗑</button>
+        </div>
+        <div id="pl-tracks" class="list"></div>
+      </div>
+    </section>
+
+    <!-- 追加(ダウンロード/アップロード) -->
+    <section id="view-add" class="view">
+      <h2>URLからダウンロード</h2>
+      <p class="note">YouTube / ニコニコ動画などのURLを貼ると、GitHub Actionsがダウンロードしてリポジトリに保存します(完了まで1〜3分)。</p>
+      <div class="form">
+        <input type="url" id="dl-url" placeholder="https://www.youtube.com/watch?v=...">
+        <div class="row">
+          <select id="dl-format">
+            <option value="mp3">🎵 mp3(音声のみ)</option>
+            <option value="mp4">🎬 mp4(動画)</option>
+          </select>
+          <input type="text" id="dl-tags" placeholder="タグ(カンマ区切り、任意)">
+        </div>
+        <button id="btn-download" class="primary wide">⬇ ダウンロード開始</button>
+      </div>
+      <div class="runs-head">
+        <h3>実行状況</h3>
+        <button id="btn-refresh-runs" class="icon-btn">⟳</button>
+      </div>
+      <div id="runs-list" class="list small"></div>
+
+      <h2 style="margin-top:24px">ファイルをアップロード</h2>
+      <p class="note">手元のmp3/mp4ファイルを直接リポジトリに追加します(1ファイル最大約50MB)。</p>
+      <input type="file" id="upload-file" accept="audio/*,video/*" multiple>
+      <div id="upload-status" class="note"></div>
+    </section>
+
+    <!-- 設定 -->
+    <section id="view-settings" class="view">
+      <h2>GitHub連携設定</h2>
+      <div class="form">
+        <label>ユーザー名(owner)<input type="text" id="cfg-owner" placeholder="your-github-name"></label>
+        <label>リポジトリ名<input type="text" id="cfg-repo" placeholder="music_video_player"></label>
+        <label>ブランチ<input type="text" id="cfg-branch" placeholder="main" value="main"></label>
+        <label>アクセストークン(PAT)<input type="password" id="cfg-token" placeholder="github_pat_..."></label>
+        <button id="btn-save-cfg" class="primary wide">保存して接続テスト</button>
+      </div>
+      <p class="note" id="cfg-status"></p>
+      <p class="note">
+        トークンは Fine-grained PAT で、このリポジトリに対して
+        <b>Contents: Read and write</b> / <b>Actions: Read and write</b>
+        の権限を付けてください。トークンはこの端末のブラウザ内(localStorage)にのみ保存されます。
+      </p>
+    </section>
+  </main>
+
+  <!-- 動画表示エリア -->
+  <div id="video-wrap" style="display:none">
+    <video id="player" playsinline></video>
+    <button id="btn-video-close" class="icon-btn">✕</button>
+  </div>
+
+  <!-- プレイヤーバー -->
+  <div id="playerbar" style="display:none">
+    <div id="pb-title">-</div>
+    <div class="seekrow">
+      <span id="pb-cur">0:00</span>
+      <input type="range" id="seek" min="0" max="100" value="0" step="0.1">
+      <span id="pb-dur">0:00</span>
+    </div>
+    <div class="controls">
+      <button id="btn-shuffle" class="ctl" title="シャッフル">🔀</button>
+      <button id="btn-prev" class="ctl">⏮</button>
+      <button id="btn-play" class="ctl big">▶</button>
+      <button id="btn-next" class="ctl">⏭</button>
+      <button id="btn-repeat" class="ctl" title="リピート">🔁</button>
+    </div>
+  </div>
+
+  <!-- タブバー -->
+  <nav id="tabs">
+    <button data-view="library" class="tab active">📚<span>ライブラリ</span></button>
+    <button data-view="playlists" class="tab">🗂<span>プレイリスト</span></button>
+    <button data-view="add" class="tab">＋<span>追加</span></button>
+    <button data-view="settings" class="tab">⚙<span>設定</span></button>
+  </nav>
+
+  <!-- モーダル -->
+  <div id="modal">
+    <div id="modal-card">
+      <button id="modal-close" class="icon-btn">✕</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
