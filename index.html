@@ -42,7 +42,8 @@
         </div>
         <div class="pl-actions">
           <button id="btn-pl-play" class="primary">▶ 再生</button>
-          <button id="btn-pl-shuffle">🔀 シャッフル再生</button>
+          <button id="btn-pl-shuffle">🔀 シャッフル</button>
+          <button id="btn-pl-add">＋ 曲を追加</button>
           <button id="btn-pl-rename" class="icon-btn">✏️</button>
           <button id="btn-pl-delete" class="icon-btn danger">🗑</button>
         </div>
@@ -53,7 +54,7 @@
     <!-- 追加(ダウンロード/アップロード) -->
     <section id="view-add" class="view">
       <h2>URLからダウンロード</h2>
-      <p class="note">YouTube / ニコニコ動画などのURLを貼ると、GitHub Actionsがダウンロードしてリポジトリに保存します(完了まで1〜3分)。<br>プレイリストのURLを貼ると中の曲をまとめて取得します(最大30件)。同じ名前の曲は自動でスキップされます。</p>
+      <p class="note">YouTube / ニコニコ動画などのURLを貼ると、GitHub Actionsがダウンロードしてリポジトリに保存します(完了まで1〜3分)。<br>プレイリストのURLを貼ると<b>中の曲をすべて</b>取得します。同じ名前の曲・取得済みの曲は自動でスキップされます。</p>
       <div class="form">
         <input type="url" id="dl-url" placeholder="https://www.youtube.com/watch?v=...">
         <div class="row">
@@ -79,13 +80,29 @@
 
     <!-- 設定 -->
     <section id="view-settings" class="view">
-      <h2>GitHub連携設定</h2>
+      <h2>かんたん設定(2台目以降)</h2>
+      <p class="note">設定済みの端末で「設定コードをコピー」→ 新しい端末でここに貼り付けるだけで完了します。</p>
       <div class="form">
-        <label>ユーザー名(owner)<input type="text" id="cfg-owner" placeholder="your-github-name"></label>
-        <label>リポジトリ名<input type="text" id="cfg-repo" placeholder="music_video_player"></label>
-        <label>ブランチ<input type="text" id="cfg-branch" placeholder="main" value="main"></label>
+        <div class="row">
+          <input type="password" id="cfg-code" placeholder="設定コードを貼り付け">
+          <button id="btn-import-cfg" class="primary" style="flex:0 0 auto">読み込む</button>
+        </div>
+        <button id="btn-export-cfg" class="wide">📋 この端末の設定コードをコピー</button>
+      </div>
+
+      <h2 style="margin-top:24px">GitHub連携設定</h2>
+      <p class="note">リポジトリ情報は入力済みです。初回はトークンだけ入力してください。</p>
+      <div class="form">
         <label>アクセストークン(PAT)<input type="password" id="cfg-token" placeholder="github_pat_..."></label>
         <button id="btn-save-cfg" class="primary wide">保存して接続テスト</button>
+        <details>
+          <summary class="note">詳細設定(通常は変更不要)</summary>
+          <div class="form">
+            <label>ユーザー名(owner)<input type="text" id="cfg-owner" placeholder="your-github-name"></label>
+            <label>リポジトリ名<input type="text" id="cfg-repo" placeholder="music_video_player"></label>
+            <label>ブランチ<input type="text" id="cfg-branch" placeholder="main" value="main"></label>
+          </div>
+        </details>
       </div>
       <p class="note" id="cfg-status"></p>
       <p class="note">

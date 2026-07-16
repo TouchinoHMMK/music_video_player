@@ -40,7 +40,6 @@ fmt = os.environ.get("MEDIA_FORMAT", "mp3")
 tags = [t.strip() for t in os.environ.get("MEDIA_TAGS", "").replace("、", ",").split(",") if t.strip()]
 
 MAX_BYTES = 95 * 1024 * 1024   # GitHubの1ファイル100MB制限に対する安全マージン
-PLAYLIST_LIMIT = 30            # プレイリストで一度に取得する最大件数
 ARCHIVE = "media/archive.txt"  # 取得済み動画IDの記録(重複ダウンロード防止)
 ext = "mp3" if fmt == "mp3" else "mp4"
 
@@ -86,8 +85,6 @@ ydl_opts = {
     # 地域制限の回避を試みる(必ず成功するわけではない)
     "geo_bypass_country": "JP",
 }
-if is_playlist:
-    ydl_opts["playlistend"] = PLAYLIST_LIMIT
 
 if os.path.exists("cookies.txt"):
     ydl_opts["cookiefile"] = "cookies.txt"
@@ -115,7 +112,7 @@ else:
     ydl_opts["merge_output_format"] = "mp4"
 
 print(f"URL: {url}")
-print(f"モード: {'プレイリスト(最大' + str(PLAYLIST_LIMIT) + '件)' if is_playlist else '単体'} / 形式: {ext}")
+print(f"モード: {'プレイリスト(全曲)' if is_playlist else '単体'} / 形式: {ext}")
 
 ATTEMPTS = 3
 info = None
@@ -140,9 +137,18 @@ for attempt in range(1, ATTEMPTS + 1):
         raise
 
 if info is None:
+    # download_archiveに記録済みの単体動画は extract_info が None を返す
+    if os.path.exists(ARCHIVE):
+        with open(ARCHIVE, encoding="utf-8") as f:
+            archived = f.read()
+        for part in url.split("?")[-1].split("&"):
+            if part.startswith("v="):
+                if part[2:] in archived:
+                    print("この動画は既にダウンロード済みです。何もせず終了します。")
+                    sys.exit(0)
     sys.exit(
         "ERROR: ダウンロードできませんでした。"
-        "Cookie未設定によるボット判定、年齢制限、非公開/削除済みなどが考えられます。"
+        "Cookieの失効、年齢制限、非公開/削除済みなどが考えられます。"
     )
 
 # 単体・プレイリストどちらも entries のリストに正規化
@@ -190,6 +196,7 @@ for e in entries:
         "file": path,
         "tags": list(tags),
         "source": e.get("webpage_url") or url,
+        "thumb": e.get("thumbnail") or "",
         "addedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     })
     existing_titles.add(title.lower())

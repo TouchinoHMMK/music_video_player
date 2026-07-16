@@ -3,8 +3,11 @@
 /* ================= 状態 ================= */
 const LS_CFG = 'mediabox_cfg';
 
+// このアプリ専用のリポジトリ情報(公開情報なので埋め込みでOK。トークンだけ端末ごとに入力)
+const DEFAULT_CFG = { owner: 'TouchinoHMMK', repo: 'music_video_player', branch: 'main' };
+
 const state = {
-  cfg: JSON.parse(localStorage.getItem(LS_CFG) || '{}'),
+  cfg: { ...DEFAULT_CFG, ...JSON.parse(localStorage.getItem(LS_CFG) || '{}') },
   library: { tracks: [], playlists: [] },
   librarySha: null,
   queue: [],        // 再生キュー(トラックIDの配列)
@@ -340,11 +343,15 @@ function typeIcon(t) { return t.type === 'video' ? '🎬' : '🎵'; }
 function trackItemHtml(t, opts = {}) {
   const playing = t.id === currentTrackId();
   const tags = (t.tags || []).map((x) => `<span class="minitag">${esc(x)}</span>`).join('');
+  const thumb = t.thumb
+    ? `<div class="thumb has-img"><img src="${esc(t.thumb)}" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()"><span class="thumb-fallback">${typeIcon(t)}</span></div>`
+    : `<div class="thumb"><span class="thumb-fallback">${typeIcon(t)}</span></div>`;
+  const eq = playing ? '<span class="eq"><i></i><i></i><i></i></span>' : '';
   return `
     <div class="item ${playing ? 'playing' : ''}" data-id="${esc(t.id)}">
-      <div class="thumb">${typeIcon(t)}</div>
+      ${thumb}
       <div class="meta" data-act="play">
-        <div class="title">${esc(t.title)}</div>
+        <div class="title">${eq}${esc(t.title)}</div>
         ${tags ? `<div class="tagrow">${tags}</div>` : ''}
       </div>
       <button class="menu-btn" data-act="${opts.inPlaylist ? 'plmenu' : 'menu'}">⋮</button>
@@ -425,18 +432,90 @@ function openTrackMenu(id) {
 
 function openTagEditor(id) {
   const t = trackById(id);
+  const selected = new Set(t.tags || []);
+  const render = () => {
+    const tags = [...new Set([...allTags(), ...selected])].sort();
+    $('#tag-choice').innerHTML = tags.length
+      ? tags.map((x) =>
+          `<button class="chip ${selected.has(x) ? 'on' : ''}" data-tag="${esc(x)}">${esc(x)}</button>`
+        ).join('')
+      : '<p class="note">まだタグがありません。下の欄から作成できます。</p>';
+  };
   openModal(`
     <h3>タグを編集</h3>
     <p class="note">${esc(t.title)}</p>
+    <p class="note">タップで選択/解除</p>
+    <div class="chips" id="tag-choice"></div>
     <div class="form">
-      <input type="text" id="tag-input" value="${esc((t.tags || []).join(', '))}" placeholder="例: J-POP, 作業用, お気に入り">
-      <p class="note">カンマ区切りで入力</p>
+      <div class="row">
+        <input type="text" id="new-tag-name" placeholder="新しいタグを作る">
+        <button id="new-tag-add" style="flex:0 0 auto">＋ 作成</button>
+      </div>
       <button class="primary wide" id="tag-save">保存</button>
     </div>`);
+  render();
+  $('#tag-choice').onclick = (e) => {
+    const tag = e.target.dataset.tag;
+    if (!tag) return;
+    selected.has(tag) ? selected.delete(tag) : selected.add(tag);
+    render();
+  };
+  $('#new-tag-add').onclick = () => {
+    const name = $('#new-tag-name').value.trim();
+    if (!name) return;
+    selected.add(name);
+    $('#new-tag-name').value = '';
+    render();
+  };
   $('#tag-save').onclick = async () => {
-    const tags = $('#tag-input').value.split(/[,、]/).map((s) => s.trim()).filter(Boolean);
     closeModal();
-    await setTrackTags(id, tags);
+    await setTrackTags(id, [...selected]);
+  };
+}
+
+/* ---- プレイリストへ曲を選んで追加 ---- */
+function openAddTracksToPlaylist(plId) {
+  const p = state.library.playlists.find((x) => x.id === plId);
+  if (!p) return;
+  const picked = new Set();
+  let query = '';
+  const candidates = () =>
+    state.library.tracks.filter((t) =>
+      !p.trackIds.includes(t.id) &&
+      (!query || t.title.toLowerCase().includes(query.toLowerCase())));
+  const render = () => {
+    const list = candidates();
+    $('#pick-list').innerHTML = list.length
+      ? list.map((t) => `
+        <button class="pick-item ${picked.has(t.id) ? 'on' : ''}" data-id="${esc(t.id)}">
+          <span class="pick-check">${picked.has(t.id) ? '✓' : ''}</span>
+          <span class="pick-icon">${typeIcon(t)}</span>
+          <span class="pick-title">${esc(t.title)}</span>
+        </button>`).join('')
+      : '<p class="note">追加できる曲がありません</p>';
+    $('#pick-count').textContent = picked.size ? `追加(${picked.size}曲)` : '追加';
+  };
+  openModal(`
+    <h3>「${esc(p.name)}」に曲を追加</h3>
+    <input type="search" id="pick-search" placeholder="検索...">
+    <div class="modal-list" id="pick-list" style="max-height:45vh;overflow-y:auto"></div>
+    <button class="primary wide" id="pick-save"><span id="pick-count">追加</span></button>`);
+  render();
+  $('#pick-search').oninput = (e) => { query = e.target.value; render(); };
+  $('#pick-list').onclick = (e) => {
+    const btn = e.target.closest('.pick-item');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    picked.has(id) ? picked.delete(id) : picked.add(id);
+    render();
+  };
+  $('#pick-save').onclick = async () => {
+    if (!picked.size) { closeModal(); return; }
+    p.trackIds.push(...picked);
+    closeModal();
+    renderAll();
+    await saveLibrary(`Add ${picked.size} tracks to playlist: ${p.name}`);
+    toast(`${picked.size}曲を追加しました`);
   };
 }
 
@@ -659,6 +738,7 @@ function bindEvents() {
     const p = state.library.playlists.find((x) => x.id === state.openPlaylistId);
     if (p?.trackIds.length) { state.shuffle = true; updateModeButtons(); playContext([...p.trackIds]); }
   });
+  $('#btn-pl-add').addEventListener('click', () => openAddTracksToPlaylist(state.openPlaylistId));
   $('#btn-pl-rename').addEventListener('click', async () => {
     const p = state.library.playlists.find((x) => x.id === state.openPlaylistId);
     if (!p) return;
@@ -714,6 +794,33 @@ function bindEvents() {
 
   // 設定
   $('#btn-save-cfg').addEventListener('click', saveCfg);
+  // 設定コード: 他の端末へ設定(トークン込み)を持ち運ぶ
+  $('#btn-export-cfg').addEventListener('click', async () => {
+    if (!state.cfg.token) { toast('先にトークンを設定してください'); return; }
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(state.cfg))));
+    try {
+      await navigator.clipboard.writeText(code);
+      toast('設定コードをコピーしました。他の端末の設定画面に貼り付けてください', 4500);
+    } catch {
+      prompt('このコードをコピーしてください', code);
+    }
+  });
+  $('#btn-import-cfg').addEventListener('click', async () => {
+    const code = $('#cfg-code').value.trim();
+    if (!code) { toast('設定コードを貼り付けてください'); return; }
+    try {
+      const cfg = JSON.parse(decodeURIComponent(escape(atob(code))));
+      if (!cfg.owner || !cfg.repo || !cfg.token) throw new Error('bad');
+      state.cfg = { ...DEFAULT_CFG, ...cfg };
+      localStorage.setItem(LS_CFG, JSON.stringify(state.cfg));
+      loadCfgToForm();
+      $('#cfg-code').value = '';
+      toast('設定を読み込みました。同期します...');
+      await syncLibrary();
+    } catch {
+      toast('設定コードが正しくありません', 4000);
+    }
+  });
 
   // プレイヤー操作
   $('#btn-play').addEventListener('click', togglePlay);
