@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 # --- YouTube抽出に必要なコンポーネントを準備(yt_dlpのimportより前に行う) ---
 # 1) JS実行環境(deno)
@@ -77,6 +78,13 @@ ydl_opts = {
     "download_archive": ARCHIVE,
     "ignoreerrors": is_playlist,   # プレイリストは一部失敗しても続行
     "match_filter": match_filter,
+    # 一時的なブロック(429等)への耐性
+    "retries": 10,
+    "fragment_retries": 10,
+    "extractor_retries": 5,
+    "sleep_interval_requests": 0.8,
+    # 地域制限の回避を試みる(必ず成功するわけではない)
+    "geo_bypass_country": "JP",
 }
 if is_playlist:
     ydl_opts["playlistend"] = PLAYLIST_LIMIT
@@ -109,8 +117,27 @@ else:
 print(f"URL: {url}")
 print(f"モード: {'プレイリスト(最大' + str(PLAYLIST_LIMIT) + '件)' if is_playlist else '単体'} / 形式: {ext}")
 
-with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    info = ydl.extract_info(url, download=True)
+ATTEMPTS = 3
+info = None
+for attempt in range(1, ATTEMPTS + 1):
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+        break
+    except yt_dlp.utils.DownloadError as e:
+        msg = str(e)
+        if "available in your country" in msg or "GeoRestricted" in msg:
+            sys.exit(
+                "ERROR: この動画は日本国内限定公開のため、海外(アメリカ)にある"
+                "GitHubのサーバーからはダウンロードできません。"
+            )
+        transient = any(k in msg for k in ["429", "Too Many Requests", "not a bot", "timed out"])
+        if transient and attempt < ATTEMPTS:
+            wait = 75 * attempt
+            print(f"YouTube側の一時ブロックを検出(試行 {attempt}/{ATTEMPTS})。{wait}秒待って再試行します...")
+            time.sleep(wait)
+            continue
+        raise
 
 if info is None:
     sys.exit(

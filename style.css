@@ -158,9 +158,11 @@ button.danger { color: var(--danger); }
 #pb-title { font-size: 13px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
 .seekrow { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--sub); }
 .seekrow input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; }
-.controls { display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 4px; }
+.controls { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 4px; }
 .ctl { background: transparent; font-size: 20px; padding: 6px; }
 .ctl.big { font-size: 30px; }
+.ctl.skip { font-size: 22px; position: relative; line-height: 1; }
+.ctl.skip .skiplabel { position: absolute; top: 54%; left: 50%; transform: translate(-50%, -50%); font-size: 8px; font-weight: 700; }
 .ctl.on { color: var(--accent2); text-shadow: 0 0 12px var(--accent); }
 .ctl .sup { font-size: 10px; vertical-align: super; }
 

@@ -183,6 +183,27 @@ async function deleteTrack(id) {
   }
 }
 
+/* ================= 再生位置の記憶(動画のみ) ================= */
+const LS_POS = 'mediabox_pos';
+
+function loadPositions() {
+  try { return JSON.parse(localStorage.getItem(LS_POS) || '{}'); } catch { return {}; }
+}
+function savePosition(id, sec) {
+  const p = loadPositions();
+  p[id] = Math.floor(sec);
+  localStorage.setItem(LS_POS, JSON.stringify(p));
+}
+function clearPosition(id) {
+  const p = loadPositions();
+  if (id in p) { delete p[id]; localStorage.setItem(LS_POS, JSON.stringify(p)); }
+}
+
+function skipBy(sec) {
+  if (!player.src || !isFinite(player.duration)) return;
+  player.currentTime = Math.min(Math.max(0, player.currentTime + sec), Math.max(0, player.duration - 0.5));
+}
+
 /* ================= 再生 ================= */
 function trackSrc(t) { return t.file; } // Pages/ローカルの相対パス
 
@@ -240,6 +261,13 @@ async function playCurrent() {
     }
   }
 
+  // 動画は前回の続きから再生(終わり際まで見ていた場合は最初から)
+  if (t.type === 'video') {
+    const pos = loadPositions()[t.id] || 0;
+    const nearEnd = isFinite(player.duration) && pos > player.duration - 15;
+    if (pos > 5 && !nearEnd) player.currentTime = pos;
+  }
+
   updatePlayBtn();
   renderTrackList();
   renderPlaylistDetail();
@@ -253,6 +281,10 @@ async function playCurrent() {
     navigator.mediaSession.setActionHandler('pause', () => player.pause());
     navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('nexttrack', () => next(false));
+    try {
+      navigator.mediaSession.setActionHandler('seekbackward', () => skipBy(-10));
+      navigator.mediaSession.setActionHandler('seekforward', () => skipBy(10));
+    } catch { /* 未対応ブラウザは無視 */ }
   }
 }
 
@@ -708,14 +740,31 @@ function bindEvents() {
     $('#video-wrap').style.display = 'none';
   });
 
-  player.addEventListener('ended', () => next(true));
+  $('#btn-back10').addEventListener('click', () => skipBy(-10));
+  $('#btn-fwd10').addEventListener('click', () => skipBy(10));
+
+  player.addEventListener('ended', () => {
+    clearPosition(currentTrackId()); // 最後まで見たので続き情報を消す
+    next(true);
+  });
   player.addEventListener('play', updatePlayBtn);
   player.addEventListener('pause', updatePlayBtn);
+  let lastPosSave = 0;
   player.addEventListener('timeupdate', () => {
     $('#pb-cur').textContent = fmtTime(player.currentTime);
     $('#pb-dur').textContent = fmtTime(player.duration);
     if (!seek._dragging && isFinite(player.duration)) {
       seek.value = (player.currentTime / player.duration) * 100 || 0;
+    }
+    // 動画の再生位置を約3秒おきに保存(続きから再生用)
+    const t = trackById(currentTrackId());
+    if (t?.type === 'video' && Math.abs(player.currentTime - lastPosSave) > 3) {
+      lastPosSave = player.currentTime;
+      if (isFinite(player.duration) && player.currentTime > player.duration - 15) {
+        clearPosition(t.id); // 終わり際は「見終わった」扱い
+      } else {
+        savePosition(t.id, player.currentTime);
+      }
     }
   });
   const seek = $('#seek');
