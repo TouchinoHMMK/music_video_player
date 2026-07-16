@@ -178,11 +178,71 @@ async function deleteTrack(id) {
     }
     state.library.tracks = state.library.tracks.filter((x) => x.id !== id);
     state.library.playlists.forEach((p) => { p.trackIds = p.trackIds.filter((x) => x !== id); });
+    await removeOffline(t).catch(() => {}); // 端末のオフライン保存も削除
     await saveLibrary(`Remove from library: ${t.title}`);
     renderAll();
     toast('削除しました');
   } catch (e) {
     toast('削除に失敗: ' + e.message, 4000);
+  }
+}
+
+/* ================= オフライン保存 ================= */
+const MEDIA_CACHE = 'mediabox-media-v1';
+
+function mediaUrlOf(t) { return new URL(t.file, location.href).href; }
+
+async function refreshOfflineSet() {
+  try {
+    const cache = await caches.open(MEDIA_CACHE);
+    const keys = await cache.keys();
+    state.offlineFiles = new Set(keys.map((r) => r.url));
+  } catch {
+    state.offlineFiles = new Set();
+  }
+}
+
+function isOffline(t) { return state.offlineFiles?.has(mediaUrlOf(t)); }
+
+async function saveOffline(t) {
+  const cache = await caches.open(MEDIA_CACHE);
+  const res = await fetch(t.file, { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  await cache.put(new Request(mediaUrlOf(t)), res);
+  state.offlineFiles?.add(mediaUrlOf(t));
+  // ブラウザに「この保存領域を消さないで」とお願いする(1回だけ)
+  try { await navigator.storage?.persist?.(); } catch { /* 未対応は無視 */ }
+}
+
+async function removeOffline(t) {
+  const cache = await caches.open(MEDIA_CACHE);
+  await cache.delete(mediaUrlOf(t), { ignoreSearch: true });
+  state.offlineFiles?.delete(mediaUrlOf(t));
+}
+
+async function saveAllOffline(tracks, label) {
+  let done = 0, failed = 0;
+  const targets = tracks.filter((t) => !isOffline(t));
+  if (!targets.length) { toast('すべて保存済みです'); return; }
+  for (const t of targets) {
+    toast(`📥 ${label} 保存中... (${done + failed + 1}/${targets.length})`, 60000);
+    try { await saveOffline(t); done++; } catch { failed++; }
+  }
+  renderAll();
+  toast(`📥 保存完了: ${done}曲` + (failed ? ` / 失敗: ${failed}曲` : ''), 4000);
+}
+
+async function updateStorageInfo() {
+  const el = $('#storage-info');
+  if (!el) return;
+  try {
+    const est = await navigator.storage.estimate();
+    const used = (est.usage / 1024 / 1024).toFixed(0);
+    const quota = (est.quota / 1024 / 1024 / 1024).toFixed(1);
+    const count = state.offlineFiles?.size || 0;
+    el.textContent = `オフライン保存: ${count}曲 / 使用容量: 約${used}MB(上限 約${quota}GB)`;
+  } catch {
+    el.textContent = '';
   }
 }
 
@@ -343,9 +403,10 @@ function typeIcon(t) { return t.type === 'video' ? '🎬' : '🎵'; }
 function trackItemHtml(t, opts = {}) {
   const playing = t.id === currentTrackId();
   const tags = (t.tags || []).map((x) => `<span class="minitag">${esc(x)}</span>`).join('');
+  const offBadge = isOffline(t) ? '<span class="offline-badge" title="オフライン保存済み">✓</span>' : '';
   const thumb = t.thumb
-    ? `<div class="thumb has-img"><img src="${esc(t.thumb)}" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()"><span class="thumb-fallback">${typeIcon(t)}</span></div>`
-    : `<div class="thumb"><span class="thumb-fallback">${typeIcon(t)}</span></div>`;
+    ? `<div class="thumb has-img"><img src="${esc(t.thumb)}" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()"><span class="thumb-fallback">${typeIcon(t)}</span>${offBadge}</div>`
+    : `<div class="thumb"><span class="thumb-fallback">${typeIcon(t)}</span>${offBadge}</div>`;
   const eq = playing ? '<span class="eq"><i></i><i></i><i></i></span>' : '';
   return `
     <div class="item ${playing ? 'playing' : ''}" data-id="${esc(t.id)}">
@@ -415,15 +476,33 @@ function closeModal() { $('#modal').classList.remove('open'); }
 function openTrackMenu(id) {
   const t = trackById(id);
   if (!t) return;
+  const saved = isOffline(t);
   openModal(`
     <h3>${esc(t.title)}</h3>
     <div class="modal-list">
+      <button data-m="offline">${saved ? '✓ オフライン保存済み(タップで端末から削除)' : '📥 この端末に保存(パケット節約)'}</button>
       <button data-m="tags">🏷 タグを編集</button>
       <button data-m="addpl">🗂 プレイリストに追加</button>
       <button data-m="delete" class="danger">🗑 削除</button>
     </div>`);
-  $('#modal-body').onclick = (e) => {
+  $('#modal-body').onclick = async (e) => {
     const m = e.target.dataset.m;
+    if (m === 'offline') {
+      closeModal();
+      try {
+        if (saved) {
+          await removeOffline(t);
+          toast('端末から削除しました(GitHub上には残っています)');
+        } else {
+          toast('📥 保存中...', 30000);
+          await saveOffline(t);
+          toast('📥 保存しました。今後この曲はパケットを使いません');
+        }
+        renderAll();
+      } catch (err) {
+        toast('保存に失敗: ' + err.message, 4000);
+      }
+    }
     if (m === 'tags') openTagEditor(id);
     if (m === 'addpl') openAddToPlaylist(id);
     if (m === 'delete') { closeModal(); deleteTrack(id); }
@@ -556,12 +635,20 @@ function openAddToPlaylist(id) {
 }
 
 /* ================= ダウンロード(GitHub Actions) ================= */
+function urlHasList(u) {
+  return /[?&]list=|playlist|\/mylist\/|\/series\//.test(u);
+}
+
 async function triggerDownload() {
-  const url = $('#dl-url').value.trim();
+  let url = $('#dl-url').value.trim();
   const format = $('#dl-format').value;
   const tags = $('#dl-tags').value.trim();
   if (!url) { toast('URLを入力してください'); return; }
   if (!cfgOk()) { toast('設定タブでGitHub情報を入力してください', 4000); return; }
+  // リストを含むURLは「この曲だけ / リスト全曲」の選択を付けて送る
+  if (urlHasList(url)) {
+    url = url.split('#')[0] + ($('#dl-scope').value === 'playlist' ? '#mediabox-playlist' : '#mediabox-single');
+  }
   try {
     await gh('/actions/workflows/download.yml/dispatches', {
       method: 'POST',
@@ -676,6 +763,7 @@ function switchView(name) {
   $(`#view-${name}`).classList.add('active');
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
   if (name === 'add') refreshRuns();
+  if (name === 'settings') updateStorageInfo();
 }
 
 function bindEvents() {
@@ -739,6 +827,12 @@ function bindEvents() {
     if (p?.trackIds.length) { state.shuffle = true; updateModeButtons(); playContext([...p.trackIds]); }
   });
   $('#btn-pl-add').addEventListener('click', () => openAddTracksToPlaylist(state.openPlaylistId));
+  $('#btn-pl-offline').addEventListener('click', () => {
+    const p = state.library.playlists.find((x) => x.id === state.openPlaylistId);
+    if (!p) return;
+    const tracks = p.trackIds.map(trackById).filter(Boolean);
+    if (tracks.length) saveAllOffline(tracks, p.name);
+  });
   $('#btn-pl-rename').addEventListener('click', async () => {
     const p = state.library.playlists.find((x) => x.id === state.openPlaylistId);
     if (!p) return;
@@ -791,6 +885,16 @@ function bindEvents() {
   $('#btn-download').addEventListener('click', triggerDownload);
   $('#btn-refresh-runs').addEventListener('click', refreshRuns);
   $('#upload-file').addEventListener('change', (e) => uploadFiles([...e.target.files]));
+  // URLにプレイリストが含まれるときだけ範囲選択を表示
+  $('#dl-url').addEventListener('input', (e) => {
+    const u = e.target.value;
+    const row = $('#dl-scope-row');
+    row.style.display = urlHasList(u) ? 'block' : 'none';
+    if (urlHasList(u)) {
+      // playlist?list=... のようなリスト専用ページは全曲をデフォルトに
+      $('#dl-scope').value = /watch\?v=|youtu\.be\//.test(u) ? 'single' : 'playlist';
+    }
+  });
 
   // 設定
   $('#btn-save-cfg').addEventListener('click', saveCfg);
@@ -901,4 +1005,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 bindEvents();
 loadCfgToForm();
 updateModeButtons();
-syncLibrary(true);
+refreshOfflineSet().then(() => syncLibrary(true));

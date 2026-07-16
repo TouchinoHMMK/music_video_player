@@ -171,6 +171,19 @@ button.danger { color: var(--danger); }
 }
 .item .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .item .thumb.has-img .thumb-fallback { display: none; }
+.offline-badge {
+  position: absolute;
+  right: 2px; bottom: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #0a2416;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
 
 .item .meta { flex: 1; min-width: 0; cursor: pointer; }
 .item .title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -35,9 +35,20 @@ subprocess.run(
 
 import yt_dlp  # noqa: E402  (上記インストール後にimportする必要がある)
 
+import urllib.parse
+
 url = os.environ["MEDIA_URL"].strip()
 fmt = os.environ.get("MEDIA_FORMAT", "mp3")
 tags = [t.strip() for t in os.environ.get("MEDIA_TAGS", "").replace("、", ",").split(",") if t.strip()]
+
+# アプリからの範囲指定(#mediabox-single / #mediabox-playlist)を取り出す
+scope = ""
+if url.endswith("#mediabox-playlist"):
+    scope = "playlist"
+    url = url[: -len("#mediabox-playlist")]
+elif url.endswith("#mediabox-single"):
+    scope = "single"
+    url = url[: -len("#mediabox-single")]
 
 MAX_BYTES = 95 * 1024 * 1024   # GitHubの1ファイル100MB制限に対する安全マージン
 ARCHIVE = "media/archive.txt"  # 取得済み動画IDの記録(重複ダウンロード防止)
@@ -51,6 +62,17 @@ is_single = any(k in low for k in [
 is_playlist = (not is_single) and any(k in low for k in [
     "list=", "playlist", "/mylist/", "/series/", "/channel/", "/user/", "/@",
 ])
+
+# アプリで「リスト全曲」「この曲だけ」が指定されていれば従う
+if scope == "playlist":
+    is_single, is_playlist = False, True
+elif scope == "single":
+    is_single, is_playlist = True, False
+
+# ミックスリスト(RD〜)は自動生成で際限がないため、全曲モードでも25件までに制限
+_query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+_list_id = (_query.get("list") or [""])[0]
+MIX_LIMIT = 25 if (_list_id.startswith("RD") and is_playlist) else None
 
 # ---- 既存ライブラリを読み込み(重複判定に使う) ----
 with open("library.json", encoding="utf-8") as f:
@@ -85,6 +107,8 @@ ydl_opts = {
     # 地域制限の回避を試みる(必ず成功するわけではない)
     "geo_bypass_country": "JP",
 }
+if MIX_LIMIT:
+    ydl_opts["playlistend"] = MIX_LIMIT
 
 if os.path.exists("cookies.txt"):
     ydl_opts["cookiefile"] = "cookies.txt"
