@@ -1,4 +1,4 @@
-const CACHE = 'mediabox-v4';
+const CACHE = 'mediabox-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -29,16 +29,17 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.includes('/media/') || url.pathname.endsWith('library.json')) return;
   if (e.request.method !== 'GET') return;
 
+  // ネットワーク優先: オンラインなら常に最新版を表示し、キャッシュを更新。
+  // オフラインのときだけ保存版(キャッシュ)にフォールバックする。
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then((cached) => {
-      const fresh = fetch(e.request).then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || fresh;
-    })
+    fetch(e.request).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+      }
+      return res;
+    }).catch(() =>
+      caches.match(e.request, { ignoreSearch: true }).then((cached) => cached || Response.error())
+    )
   );
 });
